@@ -15,7 +15,7 @@ data_path = ("Documents/TLAB/Plink/sample_data")
 geno_path = ("Documents/TLAB/Plink/sample_data/kgp")
 qc_path = ("Documents/TLAB/Plink/sample_data/qc")
 plink_path = ("Documents/TLAB/Plink")
-
+plink1_path = ("Documents/TLAB/Plink/plink1")
 # Features should be changed into ICD-10 codes later
 features = ["pheno_0", "pheno_1", "pheno_2", "pheno_3", "pheno_4", "pheno_5", "pheno_6", "pheno_7", "pheno_8", "pheno_9"]
 
@@ -29,10 +29,14 @@ rule all:
         qc_path + "/filtered_kpg.pgen",
         qc_path + "/filtered_kpg.psam",
         qc_path + "/filtered_kpg.pvar",
+        qc_path + "/filtered_kpg.bed",
+        qc_path + "/filtered_kpg.bim",
+        qc_path + "/filtered_kpg.fam",
         expand(data_path + "/gwas/naive.{pheno}.glm.linear", pheno=features),
         data_path + "/pca_gwas/pheno_pc.tsv",
         data_path + "/pca_gwas/pca_loadings.tsv",
         expand(data_path + "/pca_gwas/pca.{PC}.glm.linear", PC=PCs),
+        data_path + "/ldsc/filtered_kpg.ld",
         expand(data_path + "/gwas/naive.{pheno}.glm.linear.ldak", pheno=features),
         expand(data_path + "/gwas/naive.{pheno}.formatted.glm.linear.ldak", pheno=features),
         expand(data_path + "/gwas/naive.{pheno1}.{pheno2}.cors", pheno1=features, pheno2=features),
@@ -50,8 +54,9 @@ rule all:
         data_path + "/prs/prs_cov/naiveprs_covariate.tsv",
         data_path + "/prs/prs_cov/pcaprs_covariate.tsv",
         data_path + "/prs/prs_cov/maxgcprs_covariate.tsv",
-        data_path + "/prs/prs_cov/maxhprs_covariate.tsv"
-        
+        data_path + "/prs/prs_cov/maxhprs_covariate.tsv",
+        expand(data_path + "/ldsc/naive.{pheno}.formatted.txt", pheno=features),
+        expand(data_path + "/ldsc/maxgcp.{pheno}.formatted.txt", pheno=features)
         
         
         
@@ -90,6 +95,52 @@ rule quality_control:
         --make-pgen \
         --out {params.out_prefix}
         """
+
+
+rule convert_to_bed:
+    input:
+        geno = multiext(qc_path + "/filtered_kpg", ".pgen", ".psam", ".pvar")
+    output:
+        bed = qc_path + "/filtered_kpg.bed",
+        bim = qc_path + "/filtered_kpg.bim",
+        fam = qc_path + "/filtered_kpg.fam"
+    params:
+        geno_prefix = qc_path + "/filtered_kpg",
+        out_prefix = qc_path + "/filtered_kpg",
+        plink2 = plink_path + "/plink2"
+    shell:
+        """
+        {params.plink2} --pfile {params.geno_prefix} \
+        --make-bed \
+        --out {params.out_prefix}
+        """
+
+
+rule calculate_ld:
+    input:
+        bed = qc_path + "/filtered_kpg.bed",
+        bim = qc_path + "/filtered_kpg.bim",
+        fam = qc_path + "/filtered_kpg.fam"
+    output:
+        ld_file = data_path + "/ldsc/filtered_kpg.ld"
+    params:
+        geno_prefix = qc_path + "/filtered_kpg",
+        plink = plink1_path + "/plink",
+        out_prefix = data_path + "/ldsc/filtered_kpg",
+        ld_window_cm = 1,
+        ld_window_r2 = 0,
+        log_file = qc_path + "/calculate_ld.log"
+    shell:
+        """
+        {params.plink} --bfile {params.geno_prefix} \
+        --r2 \
+        --ld-window-cm {params.ld_window_cm} \
+        --ld-window-r2 {params.ld_window_r2} \
+        --list-all\
+        --out {params.out_prefix} 
+        """
+
+
 
 rule gwas_naive:
     input:
@@ -140,8 +191,6 @@ rule pca_gwas:
         --out {params.output_prefix}
         """
 
-        
-        
         
 # Format the GWAS results for SumHer
 
@@ -445,4 +494,37 @@ rule merge_covariates:
         prs_maxh_df = pd.merge(covar_df, prs_maxh_df, left_on='#IID', right_on='#IID', how='left')
         prs_maxh_df.to_csv(output.cov_prs_maxh, sep='\t', index=False)
 
+# For LDSC
+
+rule reformat_naive_gwas:
+    input:
+        gwas_file = data_path + "/gwas/naive.{pheno}.glm.linear"
+    output:
+        reformatted_gwas = data_path + "/ldsc/naive.{pheno}.formatted.txt"
+    params:
+        pheno = lambda wildcards: wildcards.pheno  
+    run:
+        import pandas as pd
+        df = pd.read_csv(input.gwas_file, delim_whitespace=True)
+        df_renamed = df[['#CHROM', 'POS', 'ID', 'A1', 'ALT', 'P', 'BETA', 'OBS_CT']].copy()
+        df_renamed.columns = ['CHR', 'POS', 'SNP', 'A1', 'A2', 'P', 'BETA', 'N']
+        df_renamed.to_csv(output.reformatted_gwas, sep='\t', index=False)
+        
+rule reformat_maxgcp_gwas:
+    input:
+        gwas_file = data_path + "/maxgcp_gwas/maxgcp.{pheno}.glm.linear"
+    output:
+        reformatted_gwas = data_path + "/ldsc/maxgcp.{pheno}.formatted.txt"
+    params:
+        pheno = lambda wildcards: wildcards.pheno
+    run:
+        import pandas as pd
+        df = pd.read_csv(input.gwas_file, delim_whitespace=True)
+        df_renamed = df[['#CHROM', 'POS', 'ID', 'A1', 'ALT', 'P', 'BETA', 'OBS_CT']].copy()
+        df_renamed.columns = ['CHR', 'POS', 'SNP', 'A1', 'A2', 'P', 'BETA', 'N']
+        df_renamed.to_csv(output.reformatted_gwas, sep='\t', index=False)
+
+
+# run LDSC (in another environment with Python2)
+        
         
