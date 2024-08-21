@@ -49,7 +49,7 @@ rule all:
         data_path + "/pheno_maxh_individual.tsv",
         data_path + "/maxh_gwas/maxh.pheno.glm.linear",
         expand(data_path + "/prs/naive_prs.{pheno}.sscore", pheno=features),
-        expand(data_path + "/prs/pca_prs.{PC}.sscore", PC=PCs),
+        data_path + "/prs/pca_prs.sscore",
         expand(data_path + "/prs/maxgcp_prs.{pheno}.sscore", pheno=features),
         data_path + "/prs/maxh_prs.sscore",
         data_path + "/prs/prs_cov/naiveprs_covariate.tsv",
@@ -409,12 +409,12 @@ rule compute_prs_naive:
 rule compute_prs_pca:
     input:
         geno = multiext(qc_path + "/filtered_kpg", ".pgen", ".psam", ".pvar"),
-        gwas_pca = data_path + "/pca_gwas/pca.{PCs}.glm.linear"
+        gwas_pca = data_path + "/pca_gwas/pca.PC1.glm.linear"
     output:
-        data_path + "/prs/pca_prs.{PCs}.sscore"
+        data_path + "/prs/pca_prs.sscore"
     params:
         geno_prefix = qc_path + "/filtered_kpg",
-        output_prefix = data_path + "/prs/pca_prs.{PCs}" ,
+        output_prefix = data_path + "/prs/pca_prs" ,
         plink = plink_path + "/plink2"
     shell:
         """
