@@ -16,6 +16,7 @@ geno_path = ("Documents/TLAB/Plink/sample_data/kgp")
 qc_path = ("Documents/TLAB/Plink/sample_data/qc")
 plink_path = ("Documents/TLAB/Plink")
 plink1_path = ("Documents/TLAB/Plink/plink1")
+R_path = ("Documents/TLAB/TLab_R")
 # Features should be changed into ICD-10 codes later
 features = ["pheno_0", "pheno_1", "pheno_2", "pheno_3", "pheno_4", "pheno_5", "pheno_6", "pheno_7", "pheno_8", "pheno_9"]
 
@@ -56,9 +57,13 @@ rule all:
         data_path + "/prs/prs_cov/maxgcprs_covariate.tsv",
         data_path + "/prs/prs_cov/maxhprs_covariate.tsv",
         expand(data_path + "/ldsc/naive.{pheno}.formatted.txt", pheno=features),
-        expand(data_path + "/ldsc/maxgcp.{pheno}.formatted.txt", pheno=features)
+        expand(data_path + "/ldsc/maxgcp.{pheno}.formatted.txt", pheno=features),
+        expand(data_path + "/pca_gwas/pca.{PC}.formatted.txt", PC=PCs),
+        data_path + "/maxh_gwas/maxh.pheno.formatted.txt",
+        data_path + "/pca_gwas/combined_pca_gwas_results.tsv"
         
         
+    
         
 # Suppose we use pheno_0 as the initial phenotype
 # Subsample data to see the performance of MaxGCP under different sample sizes
@@ -87,7 +92,7 @@ rule quality_control:
         plink = plink_path + "/plink2"
     shell:
         """
-        {params.plink} --pfile {params.geno_prefix} --maf 0.01 \
+        {params.plink} --pfile {params.geno_prefix} --maf 0.05 \
         --mind 0.05 \
         --geno 0.05 \
         --hwe 1e-6 \
@@ -127,7 +132,7 @@ rule calculate_ld:
         geno_prefix = qc_path + "/filtered_kpg",
         plink = plink1_path + "/plink",
         out_prefix = data_path + "/ldsc/filtered_kpg",
-        ld_window_cm = 1,
+        ld_window_cm = 10,
         ld_window_r2 = 0,
         log_file = qc_path + "/calculate_ld.log"
     shell:
@@ -166,10 +171,13 @@ rule pca_rscript:
     output:
         pca_output = data_path + "/pca_gwas/pheno_pc.tsv",
         pca_loading = data_path + "/pca_gwas/pca_loadings.tsv",
+        pca_plot = data_path + "/pca_gwas/pca_plot.png"
+    params:
+        script = R_path + "/PCA.R"
        
     shell:
         """
-        Rscript documents/tlab/Rfiles/PCA.R {input.pheno} {output.pca_output} {output.pca_loading} 
+        Rscript {params.script} {input.pheno} {output.pca_output} {output.pca_loading} {output.pca_plot}
         """
 
 rule pca_gwas:
@@ -523,6 +531,44 @@ rule reformat_maxgcp_gwas:
         df_renamed = df[['#CHROM', 'POS', 'ID', 'A1', 'ALT', 'P', 'BETA', 'OBS_CT']].copy()
         df_renamed.columns = ['CHR', 'POS', 'SNP', 'A1', 'A2', 'P', 'BETA', 'N']
         df_renamed.to_csv(output.reformatted_gwas, sep='\t', index=False)
+
+rule reformat_pca_gwas:
+    input:
+        gwas_file = data_path + "/pca_gwas/pca.{PC}.glm.linear"
+    output:
+        reformatted_gwas = data_path + "/pca_gwas/pca.{PC}.formatted.txt"
+    params:
+        PC = lambda wildcards: wildcards.PC  
+    run:
+        import pandas as pd
+        df = pd.read_csv(input.gwas_file, delim_whitespace=True)
+        df_renamed = df[['#CHROM', 'POS', 'ID', 'A1', 'ALT', 'P', 'BETA', 'OBS_CT']].copy()
+        df_renamed.columns = ['CHR', 'POS', 'SNP', 'A1', 'A2', 'P', 'BETA', 'N']
+        df_renamed.to_csv(output.reformatted_gwas, sep='\t', index=False)
+
+rule reformat_maxh_gwas:
+    input:
+        gwas_file = data_path + "/maxh_gwas/maxh.pheno.glm.linear"
+    output:
+        reformatted_gwas = data_path + "/maxh_gwas/maxh.pheno.formatted.txt"
+    run:
+        import pandas as pd
+        df = pd.read_csv(input.gwas_file, delim_whitespace=True)
+        df_renamed = df[['#CHROM', 'POS', 'ID', 'A1', 'ALT', 'P', 'BETA', 'OBS_CT']].copy()
+        df_renamed.columns = ['CHR', 'POS', 'SNP', 'A1', 'A2', 'P', 'BETA', 'N']
+        df_renamed.to_csv(output.reformatted_gwas, sep='\t', index=False)
+
+rule combine_pca_gwas:
+    input:
+        pca_gwas_dir = data_path + "/pca_gwas/",
+    output:
+        combined_pvalues = data_path + "/pca_gwas/combined_pca_gwas_results.tsv"
+    params:
+        script = R_path + "/combine_pca_gwas.R"
+    shell:
+        """
+        Rscript {params.script} {input.pca_gwas_dir} {output.combined_pvalues}
+        """
 
 
 # run LDSC (in another environment with Python2)
