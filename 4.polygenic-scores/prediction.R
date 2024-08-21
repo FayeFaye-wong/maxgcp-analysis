@@ -2,22 +2,16 @@ library(dplyr)
 library(caret)
 library(e1071)
 
-#args <- commandArgs(trailingOnly = TRUE)
-# data_path <- args[1]
-# covariate_file <- args[2]
-# phenotype_file <- args[3]
-# prs_naive_file <- args[4]
-# prs_pca_file <- args[5]
-# prs_maxgcp_file <- args[6]
-# prs_maxh_file <- args[7]
+args <- commandArgs(trailingOnly = TRUE)
+data_path <- args[1]
+covariate_file <- args[2]
+phenotype_file <- args[3]
+prs_naive_file <- args[4]
+prs_pca_file <- args[5]
+prs_maxgcp_file <- args[6]
+prs_maxh_file <- args[7]
+output_file <- args[8]
 
-data_path <- "./Documents/TLAB/Plink/sample_data"
-covariate_file <- file.path(data_path, "/covar.tsv")
-phenotype_file <- file.path(data_path, "/phenotypes.tsv")
-prs_naive_file <- file.path(data_path, "/prs/prs_cov/naiveprs_covariate.tsv")
-prs_pca_file <- file.path(data_path, "/prs/prs_cov/pcaprs_covariate.tsv")
-prs_maxgcp_file <- file.path(data_path, "/prs/prs_cov/maxgcprs_covariate.tsv")
-prs_maxh_file <- file.path(data_path, "/prs/prs_cov/maxhprs_covariate.tsv")
 
 pheno_df <- read.csv(phenotype_file, sep='\t')
 prs_naive_df <- read.csv(prs_naive_file, sep='\t')
@@ -25,8 +19,7 @@ prs_pca_df <- read.csv(prs_pca_file, sep='\t')
 prs_maxgcp_df <- read.csv(prs_maxgcp_file, sep='\t')
 prs_maxh_df <- read.csv(prs_maxh_file, sep='\t')
 
-#phenos <- c("pheno_0", "pheno_1", "pheno_2", "pheno_3", "pheno_4", "pheno_5", "pheno_6", "pheno_7", "pheno_8", "pheno_9")
-phenos <- c("pheno_0", "pheno_1")
+phenos <- c("pheno_0", "pheno_1", "pheno_2", "pheno_3", "pheno_4", "pheno_5", "pheno_6", "pheno_7", "pheno_8", "pheno_9")
 
 merge_train <- function(covar_data, pheno_data, target_pheno){
   target_pattern <- paste0("_", target_pheno)
@@ -70,28 +63,28 @@ for (pheno in phenos) {
 
   print(paste("train model for", pheno))
   naive_confusion <- perform_train_test(naive_data, pheno)
-  #pca_confusion <- perform_train_test(pca_data, pheno)
-  #maxgcp_confusion <- perform_train_test(maxgcp_data, pheno)
-  #maxh_confusion <- perform_train_test(maxh_data, pheno)
+  pca_confusion <- perform_train_test(pca_data, pheno)
+  maxgcp_confusion <- perform_train_test(maxgcp_data, pheno)
+  maxh_confusion <- perform_train_test(maxh_data, pheno)
   
   print(paste("Record Performance for", pheno))
   naive_performance <- data.frame(Model="Naive",Phenotype=pheno, Accuracy=naive_confusion$overall["Accuracy"], Sensitivity=naive_confusion$byClass["Sensitivity"], 
                                   Specificity=naive_confusion$byClass["Specificity"],Recall=naive_confusion$byClass["Recall"], Precision=naive_confusion$byClass["Precision"],
                                   F1=naive_confusion$byClass["F1"], row.names=NULL)
-  #pca_performance <- data.frame(Model="PCA",Phenotype=pheno, Accuracy=pca_confusion$overall["Accuracy"], Sensitivity=pca_confusion$byClass["Sensitivity"],
-  #                              Specificity=pca_confusion$byClass["Specificity"],Recall=pca_confusion$byClass["Recall"], Precision=pca_confusion$byClass["Precision"],
-  #                              F1=pca_confusion$byClass["F1"],row.names=NULL)
-  #maxgcp_performance <- data.frame(Model="MaxGCP",Phenotype=pheno, Accuracy=maxgcp_confusion$overall["Accuracy"], Sensitivity=maxgcp_confusion$byClass["Sensitivity"],
-  #                                 Specificity=maxgcp_confusion$byClass["Specificity"],Recall=maxgcp_confusion$byClass["Recall"], Precision=maxgcp_confusion$byClass["Precision"],
-  #                                 F1=maxgcp_confusion$byClass["F1"],row.names=NULL)
-  #maxh_performance <- data.frame(Model="MaxH",Phenotype=pheno, Accuracy=maxh_confusion$overall["Accuracy"], Sensitivity=maxh_confusion$byClass["Sensitivity"],
-  #                              Specificity=maxh_confusion$byClass["Specificity"],Recall=maxh_confusion$byClass["Recall"], Precision=maxh_confusion$byClass["Precision"],
-  #                              F1=maxh_confusion$byClass["F1"],row.names=NULL)
+  pca_performance <- data.frame(Model="PCA",Phenotype=pheno, Accuracy=pca_confusion$overall["Accuracy"], Sensitivity=pca_confusion$byClass["Sensitivity"],
+                                Specificity=pca_confusion$byClass["Specificity"],Recall=pca_confusion$byClass["Recall"], Precision=pca_confusion$byClass["Precision"],
+                                F1=pca_confusion$byClass["F1"],row.names=NULL)
+  maxgcp_performance <- data.frame(Model="MaxGCP",Phenotype=pheno, Accuracy=maxgcp_confusion$overall["Accuracy"], Sensitivity=maxgcp_confusion$byClass["Sensitivity"],
+                                   Specificity=maxgcp_confusion$byClass["Specificity"],Recall=maxgcp_confusion$byClass["Recall"], Precision=maxgcp_confusion$byClass["Precision"],
+                                   F1=maxgcp_confusion$byClass["F1"],row.names=NULL)
+  maxh_performance <- data.frame(Model="MaxH",Phenotype=pheno, Accuracy=maxh_confusion$overall["Accuracy"], Sensitivity=maxh_confusion$byClass["Sensitivity"],
+                                Specificity=maxh_confusion$byClass["Specificity"],Recall=maxh_confusion$byClass["Recall"], Precision=maxh_confusion$byClass["Precision"],
+                                F1=maxh_confusion$byClass["F1"],row.names=NULL)
   
-  #performance_results <- rbind(performance_results, naive_performance, pca_performance, maxgcp_performance, maxh_performance)
-  performance_results <- rbind(performance_results, naive_performance)
+  performance_results <- rbind(performance_results, naive_performance, pca_performance, maxgcp_performance, maxh_performance)
 }
 
 
+write.csv(performance_results, file= output_file, row.names=FALSE)
 
 
