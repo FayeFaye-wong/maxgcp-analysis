@@ -60,7 +60,8 @@ rule all:
         expand(data_path + "/ldsc/maxgcp.{pheno}.formatted.txt", pheno=features),
         expand(data_path + "/pca_gwas/pca.{PC}.formatted.txt", PC=PCs),
         data_path + "/maxh_gwas/maxh.pheno.formatted.txt",
-        data_path + "/pca_gwas/combined_pca_gwas_results.tsv"
+        data_path + "/pca_gwas/combined_pca_gwas_results.tsv",
+        data_path + "/prs/prs_performance.tsv"
         
         
     
@@ -458,7 +459,7 @@ rule merge_covariates:
     input:
         covar = data_path + "/covar.tsv",
         prs_naive = expand(data_path + "/prs/naive_prs.{pheno}.sscore", pheno=features),
-        prs_pca = expand(data_path + "/prs/pca_prs.{PC}.sscore", PC=PCs),
+        prs_pca = data_path + "/prs/pca_prs.sscore", 
         prs_maxgcp = expand(data_path + "/prs/maxgcp_prs.{pheno}.sscore", pheno=features),
         prs_maxh = data_path + "/prs/maxh_prs.sscore"
     output:
@@ -470,7 +471,7 @@ rule merge_covariates:
         prs_path = data_path + "/prs"
         covar_df = pd.read_csv(input.covar, sep='\t')
         prs_naive_files = [f"{prs_path}/naive_prs.{pheno}.sscore" for pheno in features]
-        prs_pca_files = [f"{prs_path}/pca_prs.{PC}.sscore" for PC in PCs]
+        prs_pca_files = f"{prs_path}/pca_prs.sscore"
         prs_maxgcp_files = [f"{prs_path}/maxgcp_prs.{pheno}.sscore" for pheno in features]
         prs_maxh_file = f"{prs_path}/maxh_prs.sscore"
 
@@ -481,21 +482,18 @@ rule merge_covariates:
                 covar_df = pd.merge(covar_df, prs_df, left_on='#IID', right_on='#IID', how='left')
             return covar_df
             
-        def merge_prs_pc(covar_df, prs_files, prefix):
-            for i, prs_file in enumerate(prs_files):
-                prs_df = pd.read_csv(prs_file, sep='\t')
-                prs_df = prs_df[['#IID', 'SCORE1_SUM']].rename(columns={'SCORE1_SUM': f'{prefix}_PC_{i}'})
-                covar_df = pd.merge(covar_df, prs_df, left_on='#IID', right_on='#IID', how='left')
-            return covar_df
             
         prs_naive_df = merge_prs(covar_df.copy(), prs_naive_files, 'PRS_naive')
         prs_naive_df.to_csv(output.cov_prs_naive, sep='\t', index=False)
         
-        prs_pca_df = merge_prs_pc(covar_df.copy(), prs_pca_files, 'PRS_pca')
-        prs_pca_df.to_csv(output.cov_prs_pca, sep='\t', index=False)
         
         prs_maxgcp_df = merge_prs(covar_df.copy(), prs_maxgcp_files, 'PRS_maxgcp')
         prs_maxgcp_df.to_csv(output.cov_prs_maxgcp, sep='\t', index=False)
+        
+        prs_pca_df = pd.read_csv(prs_pca_files, sep='\t')
+        prs_pca_df = prs_pca_df[['#IID', 'SCORE1_SUM']].rename(columns={'SCORE1_SUM': 'PRS_pca'})
+        prs_pca_df = pd.merge(covar_df, prs_pca_df, left_on='#IID', right_on='#IID', how='left')
+        prs_pca_df.to_csv(output.cov_prs_pca, sep='\t', index=False)
         
         prs_maxh_df = pd.read_csv(prs_maxh_file, sep='\t')
         prs_maxh_df = prs_maxh_df[['#IID', 'SCORE1_SUM']].rename(columns={'SCORE1_SUM': 'PRS_maxh'})
@@ -573,4 +571,23 @@ rule combine_pca_gwas:
 
 # run LDSC (in another environment with Python2)
         
-        
+
+# PRS performance evaluation
+rule PRS_performance_evaluation:
+    input:
+        data_path= data_path,  
+        covariate_file= data_path + "/covar.tsv",
+        phenotype_file= data_path + "/phenotypes.tsv",
+        prs_naive_file= data_path + "/prs/prs_cov/naiveprs_covariate.tsv",
+        prs_pca_file= data_path + "/prs/prs_cov/pcaprs_covariate.tsv",
+        prs_maxgcp_file= data_path + "/prs/prs_cov/maxgcprs_covariate.tsv",
+        prs_maxh_file= data_path + "/prs/prs_cov/maxhprs_covariate.tsv"
+    output:
+        performance_file= data_path + "/prs/prs_performance.tsv"
+    params:
+        script= R_path + "/prediction.R"
+    shell:
+        """
+        Rscript {params.script} {input.data_path} {input.covariate_file} {input.phenotype_file} {input.prs_naive_file} {input.prs_pca_file} {input.prs_maxgcp_file} {input.prs_maxh_file} {output.performance_file}
+        """
+
